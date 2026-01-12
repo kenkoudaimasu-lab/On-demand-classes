@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>動画編集セッション | 健康科学大学</title>
+    <style>
+        :root {
+            --primary-color: #005f73; /* 知的な青緑 */
+            --accent-color: #ee9b00; /* 注意を引くオレンジ */
+            --bg-color: #f4f4f9;
+            --panel-bg: #ffffff;
+        }
+        body {
+            font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+        }
+
+        /* Header */
+        header {
+            width: 100%;
+            background-color: var(--primary-color);
+            color: white;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-sizing: border-box;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 100;
+        }
+        .header-title { text-align: left; }
+        header h1 { margin: 0; font-size: 1.2rem; }
+        header p { margin: 2px 0 0; font-size: 0.8rem; opacity: 0.9; }
+        
+        /* Back Button */
+        .back-btn {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.4);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            text-decoration: none;
+        }
+        .back-btn:hover { background: rgba(255,255,255,0.3); }
+
+        /* Main Layout */
+        .workspace {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 95%;
+            max-width: 1200px;
+            flex-grow: 1;
+            padding: 20px 0;
+            gap: 15px;
+            overflow-y: auto; /* 小さい画面対応 */
+        }
+
+        /* Canvas Container */
+        .canvas-wrapper {
+            position: relative;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            max-height: 55vh; /* 画面に収めるため少し調整 */
+        }
+        canvas {
+            max-width: 100%;
+            max-height: 55vh;
+            display: block;
+        }
+
+        /* プレビュー用ビデオはちゃんと表示するように明示 */
+        #studio-preview {
+            display: block;
+        }
+
+        /* 裏で動かすソース用ビデオは、display:noneではなく「見えない位置」に配置する */
+        #hidden-source-video {
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+            visibility: hidden;
+        }
+
+        /* Controls Panel */
+        .controls {
+            background: var(--panel-bg);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .control-group {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+            border-right: 1px solid #eee;
+            padding-right: 15px;
+        }
+        .control-group:last-child { border-right: none; padding-right: 0; }
+
+        /* Buttons & Inputs */
+        button {
+            padding: 10px 16px;
+            border: 1px solid #ccc;
+            background: #f8f8f8;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        button:hover { background: #e0e0e0; transform: translateY(-1px); }
+        button:active { transform: translateY(1px); }
+        
+        button.active { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+        
+        button.record-btn { 
+            background: #d00000; color: white; border-color: #b00000; 
+            padding-left: 20px; padding-right: 20px;
+        }
+        button.record-btn:hover { background: #a00000; }
+        button.record-btn.recording { 
+            background: white; color: #d00000; border: 2px solid #d00000;
+            animation: pulse 1.5s infinite; 
+        }
+
+        input[type="file"] { font-size: 0.9rem; }
+        
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(208, 0, 0, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(208, 0, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(208, 0, 0, 0); } }
+
+        /* Tooltip */
+        .status-bar {
+            font-size: 0.9rem;
+            color: #555;
+            background: #fff;
+            padding: 5px 15px;
+            border-radius: 20px;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-title">
+        <h1>動画編集セッション</h1>
+        <p>健康科学大学 授業動画スタジオ</p>
+    </div>
+    <a href="#" class="back-btn" onclick="history.back(); return false;">← メニューに戻る</a>
+</header>
+
+<section id="screen-studio" class="screen-content">
+  <div id="class-studio-section" style="
+    margin-top: 30px;
+    padding: 0;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+  ">
+    <div style="background: #f3e5f5; padding: 15px 20px; border-bottom: 1px solid #e1bee7;">
+      <h2 style="color: #4a148c; margin: 0; font-size: 20px; display:flex; align-items:center; gap:10px;">
+          🎥 授業動画スタジオ
+      </h2>
+      <p style="font-size: 13px; color: #666; margin: 5px 0 0 0;">
+        教材や分析画面を操作しながら音声を吹き込み、授業動画を作成します。<br>
+        <strong>録画中でも共有画面の変更が可能です。</strong>
+      </p>
+    </div>
+
+    <div style="padding: 20px;">
+      
+      <div style="margin-bottom: 20px; text-align: center;">
+        <button onclick="startStudioScreenShare()" style="
+          background: linear-gradient(135deg, #7b1fa2, #ba68c8); 
+          color: white; border: none; padding: 15px 40px; 
+          border-radius: 30px; font-weight: bold; font-size: 16px;
+          cursor: pointer; display: inline-flex; align-items: center; gap: 10px;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.2); transition: transform 0.2s;
+        " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+          🚀 スタジオを開始する (画面選択)
+        </button>
+        <p style="font-size:13px; color:#333; margin-top:10px; background:#e3f2fd; padding:10px; border-radius:6px; text-align:left;">
+          <strong>💡 画面全体を録画する場合のコツ:</strong><br>
+          「画面全体」を選ぶと、この画面自体が映り込んで「合わせ鏡（無限ミラー）」になります。<br>
+          録画を開始したら、操作パネルの <span style="background:#555; color:white; padding:2px 6px; border-radius:4px;">🎥 Preview</span> ボタンを押して<strong>プレビューを非表示(🙈)</strong>にすると、合わせ鏡を防いで綺麗に録画できます。
+        </p>
+      </div>
+
+      <div id="studio-container" style="
+        max-width: 800px; margin: 0 auto; 
+        background: #000; border-radius: 8px; 
+        overflow: hidden; position: relative; 
+        box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+        display: flex; flex-direction: column;
+      ">
+        
+        <div style="position: relative; flex: 1; background: #000; display: flex; align-items: center; justify-content: center; min-height: 400px;">
+          <video id="studio-preview" playsinline muted autoplay style="width: 100%; height: 100%; max-height: 80vh; object-fit: contain;"></video>
+          
+          <div id="studio-rec-indicator" style="display:none; position: absolute; top: 20px; right: 20px; background: rgba(255, 0, 0, 0.9); color: white; padding: 6px 15px; border-radius: 4px; font-weight: bold; font-size: 14px; animation: blink 1s infinite; z-index: 20;">
+            ● REC
+          </div>
+        </div>
+
+        <div id="studio-controls" style="
+          background: rgba(30, 30, 30, 0.95); 
+          padding: 10px 15px; 
+          display: flex; align-items: center; justify-content: space-between;
+          border-top: 1px solid #444;
+          flex-wrap: wrap; gap: 10px;
+        ">
+          
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <div style="text-align: center;">
+                <button id="btn-toggle-mic" onclick="toggleStudioMic()" disabled style="background:#444; color:white; border:none; padding:0; border-radius:50%; width:40px; height:40px; cursor:not-allowed; font-size: 18px; display:flex; align-items:center; justify-content:center; transition: background 0.2s;">
+                    🎤
+                </button>
+                <span style="font-size:9px; color:#aaa; display:block; margin-top:2px;">Mic</span>
+            </div>
+
+            <div style="text-align: center;">
+                <button id="btn-toggle-cam" onclick="toggleStudioCamera()" disabled style="background:#444; color:white; border:none; padding:0; border-radius:50%; width:40px; height:40px; cursor:not-allowed; font-size: 18px; display:flex; align-items:center; justify-content:center; transition: background 0.2s;">
+                    📷
+                </button>
+                <span style="font-size:9px; color:#aaa; display:block; margin-top:2px;">Cam</span>
+            </div>
+
+            <div style="text-align: center;">
+                <button id="btn-change-screen" onclick="changeStudioSource()" disabled style="background:#0277bd; color:white; border:none; padding:0; border-radius:50%; width:40px; height:40px; cursor:not-allowed; font-size: 18px; display:flex; align-items:center; justify-content:center; transition: background 0.2s;">
+                    🔄
+                </button>
+                <span style="font-size:9px; color:#aaa; display:block; margin-top:2px;">Change</span>
+            </div>
+
+            <div style="text-align: center;">
+                <button id="btn-toggle-preview" onclick="toggleStudioPreview()" style="background:#555; color:white; border:none; padding:0; border-radius:50%; width:40px; height:40px; cursor:pointer; font-size: 18px; display:flex; align-items:center; justify-content:center; transition: background 0.2s;">
+                    🎥
+                </button>
+                <span style="font-size:9px; color:#aaa; display:block; margin-top:2px;">Preview</span>
+            </div>
+          </div>
+
+          <div style="flex: 1; margin: 0 15px; display: flex; flex-direction: column; justify-content: center; min-width: 80px;">
+            <div style="display: flex; justify-content: space-between; color: #bbb; font-size: 10px; margin-bottom: 4px;">
+              <span>Mic Level</span>
+              <span id="mic-status-text">OFF</span>
+            </div>
+            <div style="background: #555; height: 6px; border-radius: 3px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);">
+              <div id="audio-level-bar" style="width: 0%; height: 100%; background: linear-gradient(to right, #00e676, #ffeb3b, #ff1744); transition: width 0.05s;"></div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 15px; align-items: center;">
+            <button onclick="toggleStudioFullScreen()" title="全画面表示" style="background:transparent; color:white; border:1px solid #777; padding:6px 10px; border-radius:6px; cursor:pointer; font-size: 16px;">
+              ⛶
+            </button>
+
+            <button id="btn-studio-record" onclick="toggleStudioRecording()" disabled style="
+              background: #ccc; color: white; border: none; 
+              width: 54px; height: 54px; border-radius: 50%; 
+              font-size: 20px; cursor: not-allowed; 
+              display: flex; align-items: center; justify-content: center;
+              box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+              transition: all 0.2s;
+            ">
+              ●
+            </button>
+          </div>
+        </div>
+      </div>
+      <div style="text-align: center; margin-top: 15px;">
+        <button onclick="stopStudioStream()" id="btn-studio-stop-stream" style="display:none; background:#546e7a; color:white; border:none; padding:10px 30px; border-radius:6px; cursor:pointer; font-weight:bold;">
+          ⏹ 終了する
+        </button>
+      </div>
+
+      <video id="hidden-source-video" playsinline muted autoplay style="position:fixed; top:0; left:0; width:1px; height:1px; opacity:0; pointer-events:none; z-index:-1;"></video>
+      <canvas id="studio-mixing-canvas" style="position:fixed; top:0; left:0; width:1px; height:1px; opacity:0; pointer-events:none; z-index:-1;"></canvas>
+</div>
+    </div>
+
+<hr style="margin: 40px 0; border: 0; border-top: 2px dashed #ccc;">
+<div id="video-editor-area" style="
+    margin-top: 30px;
+    padding: 0;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+">
+  <div style="background: #e0f2f1; padding: 15px 20px; border-bottom: 1px solid #b2dfdb;">
+    <h2 style="color: #00695c; margin: 0; font-size: 20px; display:flex; align-items:center; gap:10px;">
+       ✂️ 動画編集
+    </h2>
+    
+  </div>
+
+  <div style="padding: 20px;">
+    
+    <div style="margin-bottom: 20px; padding: 15px; background: #fff; border-radius: 8px; border: 1px solid #ccc;">
+      <h4 style="margin-top:0; color:#00796b;">1. 素材動画を選択</h4>
+      <input type="file" id="editor-file-input" accept="video/*" onchange="loadEditorVideo(this)" style="width:100%;">
+    </div>
+
+    <div id="editor-controls" style="display:none;">
+      
+      <div style="display:flex; flex-wrap:wrap; gap:20px;">
+        
+        <div style="flex:1; min-width:250px; background:#fafafa; padding:15px; border-radius:8px; border:1px solid #ddd;">
+          <h4 style="margin-top:0; color:#00796b; font-size:14px;">3. トリミング (秒)</h4>
+          <div style="display:flex; align-items:center; gap:5px; margin-bottom:5px; font-size:13px;">
+            <label>開始:<input type="number" id="trim-start" value="0" min="0" step="0.1" style="width:50px;"></label>
+            <span>～</span>
+            <label>終了:<input type="number" id="trim-end" value="0" min="0" step="0.1" style="width:50px;"></label>
+          </div>
+          <div style="display:flex; gap:5px;">
+            <button onclick="setTrimCurrent('start')" style="background:#ddd; border:none; padding:4px 8px; font-size:11px; cursor:pointer; border-radius:4px; color:#333;">現在地を開始へ</button>
+            <button onclick="setTrimCurrent('end')" style="background:#ddd; border:none; padding:4px 8px; font-size:11px; cursor:pointer; border-radius:4px; color:#333;">現在地を終了へ</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:15px; background:#fafafa; padding:15px; border-radius:8px; border:1px solid #ddd;">
+          <h4 style="margin-top:0; color:#00796b; display:flex; align-items:center; gap:10px; font-size:14px;">
+            4. 分析用マスク (黒塗り)
+            <button id="btn-editor-mask" onclick="toggleEditorMaskMode()" style="background:#424242; color:white; border:none; padding:4px 12px; border-radius:20px; cursor:pointer; font-size:12px;">
+              ⬛ エリア指定
+            </button>
+            <button onclick="undoEditorMask()" style="background:#9e9e9e; color:white; border:none; padding:4px 12px; border-radius:20px; cursor:pointer; font-size:12px;">
+              ↩ 1つ消す
+            </button>
+            <button onclick="clearEditorMasks()" style="background:#d32f2f; color:white; border:none; padding:4px 12px; border-radius:20px; cursor:pointer; font-size:12px;">
+              🗑️ 全消去
+            </button>
+            </h4>
+          <p style="font-size:11px; color:#666; margin:0;">
+            ボタンを押し、隠したい範囲をドラッグしてください。（複数指定可能）
+          </p>
+        </div>
+
+      <div style="margin-top:20px; text-align:center;">
+        <div style="position:relative; display:inline-block; border:2px solid #333; background:#000; margin-bottom:10px;">
+          <canvas id="editor-canvas" style="max-width:100%; max-height:50vh; display:block; cursor:crosshair;"></canvas>
+          <video id="editor-source-video" playsinline muted style="position:absolute; top:-9999px; left:-9999px; width:1px; height:1px; opacity:0; pointer-events:none;"></video>
+        </div>
+
+        <div style="margin-top: 5px; display: flex; align-items: center; gap: 10px; background: #eee; padding: 5px 10px; border-radius: 4px;">
+            <span id="video-current-time" style="font-family: monospace; font-size: 14px; font-weight: bold;">00:00</span>
+            <input type="range" id="video-seek-bar" value="0" min="0" step="0.1" style="flex: 1; cursor: pointer;" oninput="onSeekEditor(this.value)">
+            <span id="video-total-time" style="font-family: monospace; font-size: 14px;">00:00</span>
+        </div>
+        
+        <div style="display:flex; justify-content:center; gap:10px; margin-top: 10px;">
+          <button onclick="previewEditorVideo()" style="background:#0288d1; color:white; padding:8px 20px; border:none; border-radius:4px; cursor:pointer;">▶ プレビュー再生</button>
+          <button onclick="stopEditorPreview()" style="background:#fbc02d; color:#333; padding:8px 20px; border:none; border-radius:4px; cursor:pointer;">⏸ 停止</button>
+        </div>
+
+        <div style="margin-top:20px; padding-top:15px; border-top:2px dashed #ccc;">
+          <button id="btn-editor-export" onclick="startEditorExport()" style="background:#d32f2f; color:white; padding:12px 30px; border:none; border-radius:30px; font-size:15px; font-weight:bold; cursor:pointer; box-shadow:0 3px 5px rgba(0,0,0,0.2);">
+            🎬 動画を作成・保存
+          </button>
+          <p id="editor-status" style="margin-top:10px; font-size:13px; color:#e65100; font-weight:bold; min-height: 20px;"></p>
+        </div>
+      </div> 
+    </div>
+</div>
+
+<hr style="margin: 40px 0; border: 0; border-top: 2px dashed #ccc;">
+
+<section id="library-section" style="
+    margin-top: 30px;
+    padding: 0;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+    width: 95%; max-width: 1200px; /* 横幅合わせ */
+">
+  <div style="background: #e8eaf6; padding: 15px 20px; border-bottom: 1px solid #c5cae9;">
+    <h2 style="color: #1a237e; margin: 0; font-size: 20px; display:flex; align-items:center; gap:10px;">
+        📚 動画ライブラリ (保存済み)
+    </h2>
+    <p style="font-size: 13px; color: #555; margin: 5px 0 0 0;">
+      作成・録画した動画はここに保存されます（ブラウザ内に保存）。<br>
+      ※ブラウザのキャッシュをクリアすると消えますのでご注意ください。
+    </p>
+  </div>
+
+  <div style="padding: 20px;">
+    <div id="video-library-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
+      <p style="grid-column: 1/-1; text-align: center; color: #999; padding: 20px;">
+        保存された動画はありません。
+      </p>
+    </div>
+  </div>
+</section>
+        
+
+<script>
+// ==========================================
+// 🎥 1. 授業動画スタジオ (Studio) 機能
+// ==========================================
+
+// グローバル変数
+let studioStream = null;       // 画面共有ストリーム
+let webcamStream = null;       // Webカメラストリーム
+let studioMixedStream = null;  // 録画用ミックスストリーム
+let studioRecorder = null;     // 録画インスタンス
+let studioChunks = [];         // 録画データ
+let isStudioRecording = false; // 録画中フラグ
+let studioAnimId = null;       // アニメーションループID
+let audioContext = null;       // 音声処理用
+let studioMicNode = null;      // マイク音量制御用
+
+// DOM要素
+const studioPreview = document.getElementById('studio-preview');
+const hiddenSourceVideo = document.getElementById('hidden-source-video');
+const mixingCanvas = document.getElementById('studio-mixing-canvas');
+const mixingCtx = mixingCanvas ? mixingCanvas.getContext('2d') : null;
+const levelBar = document.getElementById('audio-level-bar');
+
+// 内部状態
+let isWebcamVisible = true;
+let isMicMuted = false;
+
+// --- スタジオ開始 (画面共有 + マイク) ---
+async function startStudioScreenShare() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        alert("このブラウザは画面共有に対応していません。");
+        return;
+    }
+
+    try {
+        // 1. ユーザーメディア（マイク & カメラ）取得
+        const userStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: { width: 320, height: 240, facingMode: "user" }
+        });
+
+        // カメラとマイクを分離
+        webcamStream = new MediaStream(userStream.getVideoTracks());
+        const micStream = new MediaStream(userStream.getAudioTracks());
+
+        // 2. 画面共有開始
+        studioStream = await navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: "always" },
+            audio: true // システム音声
+        });
+
+        // 3. 映像セットアップ (隠しビデオ要素にセット)
+        hiddenSourceVideo.srcObject = studioStream;
+        await hiddenSourceVideo.play();
+
+        // Canvasサイズ合わせ
+        mixingCanvas.width = hiddenSourceVideo.videoWidth;
+        mixingCanvas.height = hiddenSourceVideo.videoHeight;
+
+        // 4. 音声ミックス (マイク + システム音)
+        const mixedAudioTracks = await mixAudioStreams(micStream, studioStream);
+
+        // 5. 録画用ストリーム作成 (Canvas映像 + ミックス音声)
+        const canvasStream = mixingCanvas.captureStream(30); // 30fps
+        if (mixedAudioTracks.length > 0) {
+            canvasStream.addTrack(mixedAudioTracks[0]);
+        }
+        studioMixedStream = canvasStream;
+
+        // 6. プレビュー表示
+        studioPreview.srcObject = studioMixedStream;
+        
+        // 7. 描画ループ開始
+        drawStudioFrame();
+        
+        // 8. UI更新
+        updateStudioUI(true);
+        initAudioMeter(micStream); // マイクレベルメーター開始
+
+        // 画面共有停止時の処理
+        studioStream.getVideoTracks()[0].onended = () => {
+            stopStudioStream();
+        };
+
+    } catch (err) {
+        console.error("Studio Error:", err);
+        alert("スタジオの起動に失敗しました: " + err.message);
+    }
+}
+
+// --- 映像合成ループ (画面 + ワイプ) ---
+function drawStudioFrame() {
+    if (!studioStream || !studioStream.active) return;
+
+    // キャンバスサイズ更新（画面サイズ変更に対応）
+    if (mixingCanvas.width !== hiddenSourceVideo.videoWidth) {
+        mixingCanvas.width = hiddenSourceVideo.videoWidth;
+        mixingCanvas.height = hiddenSourceVideo.videoHeight;
+    }
+
+    // A. 背景 (画面共有)
+    mixingCtx.drawImage(hiddenSourceVideo, 0, 0, mixingCanvas.width, mixingCanvas.height);
+
+    // B. ワイプ (Webカメラ)
+    if (isWebcamVisible && webcamStream) {
+        // 簡易的にビデオ要素を作成してフレームを取得
+        if (!window.tempWebcamVideo) {
+            window.tempWebcamVideo = document.createElement('video');
+            window.tempWebcamVideo.srcObject = webcamStream;
+            window.tempWebcamVideo.muted = true;
+            window.tempWebcamVideo.play();
+        }
+
+        const wipeW = mixingCanvas.width * 0.2; // 画面の20%
+        const wipeH = (wipeW / 4) * 3;
+        const margin = 20;
+        const x = mixingCanvas.width - wipeW - margin;
+        const y = mixingCanvas.height - wipeH - margin;
+
+        mixingCtx.save();
+        // 円形クリップ
+        mixingCtx.beginPath();
+        mixingCtx.arc(x + wipeW/2, y + wipeH/2, wipeH/2, 0, Math.PI * 2);
+        mixingCtx.clip();
+        mixingCtx.drawImage(window.tempWebcamVideo, x, y, wipeW, wipeH);
+        // 白枠
+        mixingCtx.strokeStyle = "white";
+        mixingCtx.lineWidth = 5;
+        mixingCtx.stroke();
+        mixingCtx.restore();
+    }
+
+    studioAnimId = requestAnimationFrame(drawStudioFrame);
+}
+
+// --- 音声ミックス処理 ---
+async function mixAudioStreams(micStream, sysStream) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const dest = audioContext.createMediaStreamDestination();
+
+    // マイク入力
+    if (micStream.getAudioTracks().length > 0) {
+        const micSrc = audioContext.createMediaStreamSource(micStream);
+        studioMicNode = audioContext.createGain();
+        studioMicNode.gain.value = 1.5; // マイク音量増幅
+        micSrc.connect(studioMicNode).connect(dest);
+    }
+
+    // システム音声入力
+    if (sysStream.getAudioTracks().length > 0) {
+        const sysSrc = audioContext.createMediaStreamSource(sysStream);
+        const sysGain = audioContext.createGain();
+        sysGain.gain.value = 1.0;
+        sysSrc.connect(sysGain).connect(dest);
+    }
+
+    return dest.stream.getAudioTracks();
+}
+
+// --- マイクレベルメーター ---
+function initAudioMeter(stream) {
+    if (!audioContext) return;
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    const src = audioContext.createMediaStreamSource(stream);
+    src.connect(analyser);
+    
+    const buffer = new Uint8Array(analyser.frequencyBinCount);
+    
+    const updateMeter = () => {
+        if (!studioStream || !studioStream.active) return;
+        analyser.getByteFrequencyData(buffer);
+        let sum = 0;
+        for(let i=0; i<buffer.length; i++) sum += buffer[i];
+        const avg = sum / buffer.length;
+        
+        // ミュート時は0表示
+        const vol = (isMicMuted) ? 0 : Math.min(100, avg * 2); 
+        if(levelBar) levelBar.style.width = vol + "%";
+        
+        requestAnimationFrame(updateMeter);
+    };
+    updateMeter();
+}
+
+// --- UI操作 ---
+function toggleStudioMic() {
+    isMicMuted = !isMicMuted;
+    if (studioMicNode) {
+        studioMicNode.gain.value = isMicMuted ? 0 : 1.5;
+    }
+    const btn = document.getElementById('btn-toggle-mic');
+    const status = document.getElementById('mic-status-text');
+    if (isMicMuted) {
+        btn.style.background = "#d32f2f";
+        btn.innerHTML = "🔇";
+        status.textContent = "MUTE";
+    } else {
+        btn.style.background = "#444";
+        btn.innerHTML = "🎤";
+        status.textContent = "ON";
+    }
+}
+
+function toggleStudioCamera() {
+    isWebcamVisible = !isWebcamVisible;
+    const btn = document.getElementById('btn-toggle-cam');
+    if (isWebcamVisible) {
+        btn.style.background = "#444";
+        btn.innerHTML = "📷";
+    } else {
+        btn.style.background = "#d32f2f";
+        btn.innerHTML = "🚫";
+    }
+}
+
+// --- 画面共有の変更 (Change) ---
+async function changeStudioSource() {
+    try {
+        // 1. 新しい画面共有を開始（選択ダイアログを出す）
+        const newStream = await navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: "always" },
+            audio: true // システム音声も取得
+        });
+
+        // 2. 現在の画面共有（古い方）のトラックを停止
+        if (studioStream) {
+            const oldVideoTrack = studioStream.getVideoTracks()[0];
+            if (oldVideoTrack) {
+                oldVideoTrack.stop();
+            }
+        }
+
+        // 3. グローバル変数を新しいストリームに更新
+        studioStream = newStream;
+
+        // 4. 裏で動いているビデオタグのソースを差し替える
+        const hiddenVideo = document.getElementById('hidden-source-video');
+        hiddenVideo.srcObject = studioStream;
+        await hiddenVideo.play();
+
+        // 5. 停止時の処理を再登録
+        studioStream.getVideoTracks()[0].onended = () => {
+            stopStudioStream();
+        };
+        
+        // ※注意: 録画中の場合、システム音声（PCの音）の切り替えが完全には反映されない場合がありますが、
+        // 映像は即座に新しい画面に切り替わります。
+
+    } catch (err) {
+        console.log("画面変更がキャンセルされました:", err);
+    }
+}
+
+function toggleStudioPreview() {
+    if (studioPreview.style.opacity === '0') {
+        studioPreview.style.opacity = '1';
+    } else {
+        studioPreview.style.opacity = '0'; // 合わせ鏡防止のため非表示
+    }
+}
+
+function toggleStudioFullScreen() {
+    const el = document.getElementById('studio-container');
+    if (!document.fullscreenElement) {
+        el.requestFullscreen().catch(e => alert("全画面エラー: " + e.message));
+    } else {
+        document.exitFullscreen();
+    }
+}
+
+function updateStudioUI(isActive) {
+    const btns = ['btn-toggle-mic', 'btn-toggle-cam', 'btn-change-screen', 'btn-studio-record'];
+    btns.forEach(id => {
+        const el = document.getElementById(id);
+        if(el) {
+            el.disabled = !isActive;
+            el.style.cursor = isActive ? 'pointer' : 'not-allowed';
+        }
+    });
+    document.getElementById('btn-studio-record').style.background = isActive ? '#d32f2f' : '#ccc';
+    document.getElementById('btn-studio-stop-stream').style.display = isActive ? 'inline-block' : 'none';
+}
+
+// --- 録画制御 ---
+function toggleStudioRecording() {
+    if (!isStudioRecording) {
+        // 録画開始
+        studioChunks = [];
+        studioRecorder = new MediaRecorder(studioMixedStream, { mimeType: 'video/webm;codecs=vp9' });
+        
+        studioRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) studioChunks.push(e.data);
+        };
+        
+        studioRecorder.onstop = saveStudioVideo;
+        
+        studioRecorder.start();
+        isStudioRecording = true;
+        
+        // UI更新
+        document.getElementById('studio-rec-indicator').style.display = 'block';
+        document.getElementById('btn-studio-record').innerHTML = "■";
+        document.getElementById('btn-studio-record').classList.add('recording');
+        
+    } else {
+        // 録画停止
+        studioRecorder.stop();
+        isStudioRecording = false;
+        
+        // UI更新
+        document.getElementById('studio-rec-indicator').style.display = 'none';
+        document.getElementById('btn-studio-record').innerHTML = "●";
+        document.getElementById('btn-studio-record').classList.remove('recording');
+    }
+}
+
+function saveStudioVideo() {
+    const blob = new Blob(studioChunks, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Lesson_Video_${new Date().getTime()}.webm`;
+    a.click();
+    
+    // ★ライブラリ保存の確認
+    if (confirm("動画をアプリ内ライブラリにも保存しますか？")) {
+        if(typeof saveVideoToDB === 'function') saveVideoToDB(blob, a.download);
+    }
+}
+
+function stopStudioStream() {
+    if (studioStream) studioStream.getTracks().forEach(t => t.stop());
+    if (webcamStream) webcamStream.getTracks().forEach(t => t.stop());
+    if (studioMixedStream) studioMixedStream.getTracks().forEach(t => t.stop());
+    if (audioContext) audioContext.close();
+    if (studioAnimId) cancelAnimationFrame(studioAnimId);
+    
+    studioPreview.srcObject = null;
+    updateStudioUI(false);
+}
+
+
+// ==========================================
+// ✂️ 2. 動画編集 (Editor) 機能
+// ==========================================
+
+let editorVideo = document.getElementById('editor-source-video');
+let editorCanvas = document.getElementById('editor-canvas');
+let editorCtx = editorCanvas ? editorCanvas.getContext('2d') : null;
+let isEditorPreviewing = false;
+
+let editorMasks = []; // マスク座標配列
+let isMasking = false;
+let maskStart = null;
+let editorAnimId = null;
+let isExporting = false;
+
+// --- 動画読み込み (修正版) ---
+function loadEditorVideo(input) {
+    const file = input.files[0];
+    if (!file) return;
+    
+    const url = URL.createObjectURL(file);
+    editorVideo.src = url;
+    
+    // 1. 動画の基本情報（長さやサイズ）がわかった時点でエリアを表示
+    editorVideo.onloadedmetadata = () => {
+        document.getElementById('editor-controls').style.display = 'block';
+        
+        document.getElementById('trim-start').value = 0;
+        document.getElementById('trim-end').value = editorVideo.duration.toFixed(1);
+        
+        // シークバーの最大値を動画の長さに合わせる
+        document.getElementById('video-seek-bar').max = editorVideo.duration;
+
+        updateEditorCanvas();
+        updateTimeDisplay(); // 時間表示も初期化
+    };
+    
+    // 2. 映像データが「描画可能」になったら、確実に最初の画を表示して待機
+    editorVideo.oncanplay = () => {
+        editorVideo.currentTime = 0;
+        drawEditorFrame();
+        editorVideo.oncanplay = null; // 重要：イベントを解除
+    };
+    
+    // シーク（時間移動）した時も描画更新
+    editorVideo.onseeked = () => drawEditorFrame();
+}
+
+// --- シークバー操作 ---
+function onSeekEditor(val) {
+    // プレビュー再生中なら止める
+    if (typeof isEditorPreviewing !== 'undefined' && isEditorPreviewing) {
+        stopEditorPreview();
+    }
+    
+    // 動画の時間を変更
+    editorVideo.currentTime = val;
+    
+    // 画面を更新
+    drawEditorFrame();
+    updateTimeDisplay();
+}
+
+function updateTimeDisplay() {
+    const cur = editorVideo.currentTime;
+    const dur = editorVideo.duration || 0;
+    
+    // 時間表示の更新 (00:00形式)
+    const fmt = (s) => {
+        const m = Math.floor(s / 60).toString().padStart(2, '0');
+        const ss = Math.floor(s % 60).toString().padStart(2, '0');
+        return `${m}:${ss}`;
+    };
+    
+    document.getElementById('video-current-time').textContent = fmt(cur);
+    document.getElementById('video-total-time').textContent = fmt(dur);
+    
+    // シークバーの位置更新 (操作中でない場合のみ)
+    const seekBar = document.getElementById('video-seek-bar');
+    if (document.activeElement !== seekBar) {
+        seekBar.value = cur;
+    }
+}
+
+
+// --- キャンバス更新 ---
+function updateEditorCanvas() {
+    // 比率選択機能を削除したため、常に横長(16:9)で固定
+    editorCanvas.width = 1280; 
+    editorCanvas.height = 720;
+    
+    drawEditorFrame();
+}
+
+function drawEditorFrame() {
+    if (!editorCtx) return;
+    
+    // 動画の準備ができていない、またはサイズが0の場合は何もしない（前の絵を残す）
+    if (!editorVideo || editorVideo.videoWidth === 0) return;
+
+    // 1. 黒背景でクリア
+    editorCtx.fillStyle = '#000';
+    editorCtx.fillRect(0, 0, editorCanvas.width, editorCanvas.height);
+    
+    // 2. 動画描画（アスペクト比維持フィット）
+    // readyStateのチェックを緩める (>= 2 ではなく >= 1 でも描画を試みる)
+    if (editorVideo.readyState >= 1) { 
+        const scale = Math.min(
+            editorCanvas.width / editorVideo.videoWidth,
+            editorCanvas.height / editorVideo.videoHeight
+        );
+        const w = editorVideo.videoWidth * scale;
+        const h = editorVideo.videoHeight * scale;
+        const x = (editorCanvas.width - w) / 2;
+        const y = (editorCanvas.height - h) / 2;
+        
+        editorCtx.drawImage(editorVideo, x, y, w, h);
+    }
+    
+    // 3. マスク描画
+    editorCtx.fillStyle = '#000';
+    editorMasks.forEach(m => {
+        editorCtx.fillRect(m.x, m.y, m.w, m.h);
+    });
+    
+    // 4. ドラッグ中の枠
+    if (isMasking && maskStart && currentMaskPos) {
+        editorCtx.strokeStyle = 'yellow';
+        editorCtx.lineWidth = 2;
+        const r = getRect(maskStart, currentMaskPos);
+        editorCtx.strokeRect(r.x, r.y, r.w, r.h);
+    }
+
+    // 画面更新のタイミングで時間表示も更新する
+    if (typeof updateTimeDisplay === 'function') {
+        updateTimeDisplay();
+    }
+}
+
+// --- プレビュー ---
+function previewEditorVideo() {
+    // 念のためリセット
+    stopEditorPreview();
+    isEditorPreviewing = true; // フラグをON
+
+    const start = parseFloat(document.getElementById('trim-start').value);
+    const end = parseFloat(document.getElementById('trim-end').value);
+
+    // 開始位置にセット
+    editorVideo.currentTime = start;
+
+    // 再生開始
+    editorVideo.play().then(() => {
+        
+        const loop = () => {
+            // 重要：フラグがOFFならループを止める
+            if (!isEditorPreviewing) return;
+
+            // 終了判定
+            if (editorVideo.currentTime >= end || editorVideo.ended) {
+                stopEditorPreview(); // 終了位置に来たら停止処理を呼ぶ
+                return;
+            }
+
+            // 描画
+            drawEditorFrame();
+            editorAnimId = requestAnimationFrame(loop);
+        };
+
+        loop();
+
+    }).catch(error => {
+        console.error("再生エラー:", error);
+        alert("動画の再生を開始できませんでした。");
+        isEditorPreviewing = false;
+    });
+}
+
+function stopEditorPreview() {
+    isEditorPreviewing = false; // フラグをOFF
+    editorVideo.pause();
+    if (editorAnimId) cancelAnimationFrame(editorAnimId);
+}
+
+function setTrimCurrent(type) {
+    const val = editorVideo.currentTime.toFixed(1);
+    document.getElementById(type === 'start' ? 'trim-start' : 'trim-end').value = val;
+}
+
+// --- マスク操作 ---
+let currentMaskPos = null;
+
+function toggleEditorMaskMode() {
+    isMasking = !isMasking;
+    const btn = document.getElementById('btn-editor-mask');
+    
+    if (isMasking) {
+        btn.style.background = '#d32f2f';
+        btn.textContent = '指定中...';
+        // イベント登録
+        editorCanvas.addEventListener('mousedown', onMaskDown);
+        editorCanvas.addEventListener('mousemove', onMaskMove);
+        editorCanvas.addEventListener('mouseup', onMaskUp);
+    } else {
+        btn.style.background = '#424242';
+        btn.textContent = '⬛ エリア指定';
+        // イベント解除
+        editorCanvas.removeEventListener('mousedown', onMaskDown);
+        editorCanvas.removeEventListener('mousemove', onMaskMove);
+        editorCanvas.removeEventListener('mouseup', onMaskUp);
+    }
+}
+
+function getCanvasPos(e) {
+    const rect = editorCanvas.getBoundingClientRect();
+    const scaleX = editorCanvas.width / rect.width;
+    const scaleY = editorCanvas.height / rect.height;
+    return {
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY
+    };
+}
+
+function onMaskDown(e) {
+    maskStart = getCanvasPos(e);
+    currentMaskPos = maskStart;
+}
+function onMaskMove(e) {
+    if (!maskStart) return;
+    currentMaskPos = getCanvasPos(e);
+    drawEditorFrame();
+}
+function onMaskUp(e) {
+    if (!maskStart) return;
+    const r = getRect(maskStart, getCanvasPos(e));
+    if (r.w > 10 && r.h > 10) {
+        editorMasks.push(r);
+    }
+    maskStart = null;
+    drawEditorFrame();
+}
+function getRect(p1, p2) {
+    return {
+        x: Math.min(p1.x, p2.x),
+        y: Math.min(p1.y, p2.y),
+        w: Math.abs(p1.x - p2.x),
+        h: Math.abs(p1.y - p2.y)
+    };
+}
+function undoEditorMask() { editorMasks.pop(); drawEditorFrame(); }
+function clearEditorMasks() { editorMasks = []; drawEditorFrame(); }
+
+// --- 書き出し (Export) ---
+function startEditorExport() {
+    if (isExporting) return;
+    isExporting = true;
+    
+    const start = parseFloat(document.getElementById('trim-start').value);
+    const end = parseFloat(document.getElementById('trim-end').value);
+    const duration = end - start;
+    const btn = document.getElementById('btn-editor-export');
+    const status = document.getElementById('editor-status');
+    
+    btn.disabled = true;
+    
+    // Canvas録画
+    const stream = editorCanvas.captureStream(30);
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+    const chunks = [];
+    
+    recorder.ondataavailable = e => { if(e.data.size > 0) chunks.push(e.data); };
+    recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Edited_Video_${new Date().getTime()}.webm`;
+        a.click();
+        
+        status.textContent = "✅ 完了しました";
+        btn.disabled = false;
+        isExporting = false;
+        
+        // ★ライブラリ保存の確認（ここも統一しました）
+        if(confirm("動画をアプリ内ライブラリにも保存しますか？")) {
+            if(typeof saveVideoToDB === 'function') saveVideoToDB(blob, a.download);
+        }
+    };
+    
+    recorder.start();
+    editorVideo.currentTime = start;
+    editorVideo.play();
+    
+    const recLoop = () => {
+        if (!isExporting) return;
+        drawEditorFrame();
+        
+        if (editorVideo.currentTime >= end || editorVideo.ended) {
+            editorVideo.pause();
+            recorder.stop();
+            return;
+        }
+        
+        const prog = Math.round(((editorVideo.currentTime - start) / duration) * 100);
+        status.textContent = `⏳ 作成中... ${prog}%`;
+        
+        requestAnimationFrame(recLoop);
+    };
+    recLoop();
+}
+
+// ==========================================
+// 📚 3. 動画ライブラリ (IndexedDB) 機能
+// ==========================================
+
+const DB_NAME = 'SmartClassDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'videos';
+let db = null;
+
+// --- データベース初期化 ---
+function initLibraryDB() {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = (e) => {
+        const d = e.target.result;
+        if (!d.objectStoreNames.contains(STORE_NAME)) {
+            // ID(自動連番), title, blob, date, size を保存
+            d.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+        }
+    };
+
+    request.onsuccess = (e) => {
+        db = e.target.result;
+        loadVideosFromDB(); // 初期表示
+    };
+
+    request.onerror = (e) => {
+        console.error("DB Error:", e);
+    };
+}
+
+// アプリ起動時にDBを開く
+initLibraryDB();
+
+// --- 動画を保存する (外部から呼ばれる関数) ---
+function saveVideoToDB(blob, filename) {
+    if (!db) return;
+
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    
+    const record = {
+        title: filename || `Video_${new Date().toLocaleTimeString()}`,
+        blob: blob,
+        date: new Date().toLocaleString(),
+        size: (blob.size / 1024 / 1024).toFixed(2) + ' MB'
+    };
+
+    const request = store.add(record);
+
+    request.onsuccess = () => {
+        // 保存成功したらリストを更新
+        alert("ライブラリに保存しました！");
+        loadVideosFromDB();
+        
+        // 自動スクロール
+        document.getElementById('library-section').scrollIntoView({ behavior: 'smooth' });
+    };
+
+    request.onerror = () => {
+        alert("保存に失敗しました。容量オーバーの可能性があります。");
+    };
+}
+
+// --- 保存済み動画を読み込んで表示 ---
+function loadVideosFromDB() {
+    if (!db) return;
+    
+    const container = document.getElementById('video-library-list');
+    container.innerHTML = ''; // クリア
+
+    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.openCursor(null, 'prev'); // 新しい順
+
+    let count = 0;
+
+    request.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+            count++;
+            const data = cursor.value;
+            const videoURL = URL.createObjectURL(data.blob);
+
+            // カードHTML作成
+            const card = document.createElement('div');
+            card.style.cssText = "background:#fff; border:1px solid #ddd; border-radius:8px; padding:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05); display:flex; flex-direction:column; gap:10px;";
+            card.innerHTML = `
+                <div style="position:relative; width:100%; padding-top:56.25%; background:#000; border-radius:4px; overflow:hidden;">
+                    <video src="${videoURL}" controls style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain;"></video>
+                </div>
+                <div>
+                    <h4 style="margin:0 0 5px 0; font-size:14px; color:#333; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${data.title}</h4>
+                    <p style="margin:0; font-size:11px; color:#777;">📅 ${data.date} | 💾 ${data.size}</p>
+                </div>
+                <div style="display:flex; gap:5px; margin-top:auto;">
+                    <a href="${videoURL}" download="${data.title}" style="flex:1; text-align:center; background:#00897b; color:white; text-decoration:none; padding:6px; border-radius:4px; font-size:12px;">📥 保存</a>
+                    <button onclick="deleteVideoFromDB(${data.id})" style="flex:1; background:#ef5350; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-size:12px;">🗑️ 削除</button>
+                    <button onclick="loadToEditorFromLib('${videoURL}')" style="flex:1; background:#f9a825; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-size:12px;">✂️ 編集</button>
+                </div>
+            `;
+            container.appendChild(card);
+            
+            cursor.continue();
+        } else {
+            if (count === 0) {
+                container.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #999; padding: 20px;">保存された動画はありません。</p>';
+            }
+        }
+    };
+}
+
+// --- 削除機能 ---
+function deleteVideoFromDB(id) {
+    if (!confirm("本当に削除しますか？")) return;
+    
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    store.delete(id);
+    
+    transaction.oncomplete = () => {
+        loadVideosFromDB();
+    };
+}
+
+// --- ライブラリから編集画面へ読み込む機能 ---
+function loadToEditorFromLib(blobUrl) {
+    // BlobURLからFileオブジェクト風に変換してエディタに渡す
+    fetch(blobUrl)
+        .then(res => res.blob())
+        .then(blob => {
+            // エディタのvideo要素にセット
+            const videoEl = document.getElementById('editor-source-video');
+            videoEl.src = URL.createObjectURL(blob);
+            
+            // エディタUIの表示更新
+            videoEl.onloadedmetadata = () => {
+                document.getElementById('editor-controls').style.display = 'block';
+                document.getElementById('trim-start').value = 0;
+                document.getElementById('trim-end').value = videoEl.duration.toFixed(1);
+                document.getElementById('video-seek-bar').max = videoEl.duration;
+                if(typeof updateEditorCanvas === 'function') updateEditorCanvas();
+                if(typeof updateTimeDisplay === 'function') updateTimeDisplay();
+                
+                // エディタエリアへスクロール
+                document.getElementById('video-editor-area').scrollIntoView({ behavior: 'smooth' });
+            };
+            
+            videoEl.oncanplay = () => {
+                videoEl.currentTime = 0;
+                if(typeof drawEditorFrame === 'function') drawEditorFrame();
+                videoEl.oncanplay = null;
+            };
+        });
+}
+</script>
+</body>
+</html>
