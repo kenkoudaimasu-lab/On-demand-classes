@@ -756,23 +756,6 @@ function closeEditor() {
   document.getElementById('view-course-edit').classList.remove('hidden');
 }
 
-async function doSaveLesson() {
-  const week = document.getElementById('editor-week').dataset.week;
-  const title = document.getElementById('editor-title').value;
-  const date = document.getElementById('editor-date').value;
-  const json = document.getElementById('editor-json').value;
-  
-  const btn = event.target; btn.disabled = true; btn.innerText = "保存中...";
-  
-  const res = await callGAS('saveLessonData', {
-    courseId: currentCourseId, week: week, title: title, date: date, json: json
-  });
-  
-  alert("保存しました");
-  closeEditor();
-  openCourseEdit(currentCourseId, document.getElementById('edit-course-title').innerText);
-  btn.disabled = false; btn.innerText = "保存する";
-}
 
 // ==========================================
 // 👨‍🎓 学生用ロジック (新規登録・ログイン・履修)
