@@ -606,6 +606,8 @@ function addQuestionUI(initialData = null) {
   const index = container.children.length; // 何問目か
   
   // データの初期値設定
+  // 既存データがない場合はデフォルト「choice(4択)」
+  const type = initialData ? (initialData.type || "choice") : "choice";
   const text = initialData ? initialData.text : "";
   const opts = initialData ? initialData.options : ["", "", "", ""];
   const ans = initialData ? initialData.answer : 0;
@@ -615,33 +617,56 @@ function addQuestionUI(initialData = null) {
   div.className = "question-item";
   div.style.cssText = "background: #f9f9f9; padding: 15px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 15px;";
   
+  // フォームHTML
+  // ※ onchangeでタイプ切り替え時に選択肢の表示/非表示を制御
   div.innerHTML = `
     <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-      <strong>問 ${index + 1}</strong>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <strong>問 ${index + 1}</strong>
+        <select class="q-type" style="width:auto; padding:2px; font-size:12px;" onchange="toggleQuestionType(this)">
+          <option value="choice" ${type === 'choice' ? 'selected' : ''}>4択クイズ</option>
+          <option value="text" ${type === 'text' ? 'selected' : ''}>記述式</option>
+        </select>
+      </div>
       <button onclick="deleteQuestionUI(this)" style="background:#ef5350; color:white; border:none; padding:2px 8px; cursor:pointer; border-radius:4px; font-size:12px;">削除</button>
     </div>
+
     <input type="text" class="q-text" placeholder="問題文を入力" value="${text}" style="margin-bottom:10px; font-weight:bold;">
     
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:10px;">
-      <input type="text" class="q-opt0" placeholder="選択肢 A" value="${opts[0]}">
-      <input type="text" class="q-opt1" placeholder="選択肢 B" value="${opts[1]}">
-      <input type="text" class="q-opt2" placeholder="選択肢 C" value="${opts[2]}">
-      <input type="text" class="q-opt3" placeholder="選択肢 D" value="${opts[3]}">
+    <div class="area-choice" style="display:${type === 'choice' ? 'block' : 'none'};">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:10px;">
+        <input type="text" class="q-opt0" placeholder="選択肢 A" value="${opts[0]}">
+        <input type="text" class="q-opt1" placeholder="選択肢 B" value="${opts[1]}">
+        <input type="text" class="q-opt2" placeholder="選択肢 C" value="${opts[2]}">
+        <input type="text" class="q-opt3" placeholder="選択肢 D" value="${opts[3]}">
+      </div>
+      
+      <label style="font-size:12px;">正解:</label>
+      <select class="q-ans" style="margin-bottom:10px;">
+        <option value="0" ${ans == 0 ? "selected" : ""}>A</option>
+        <option value="1" ${ans == 1 ? "selected" : ""}>B</option>
+        <option value="2" ${ans == 2 ? "selected" : ""}>C</option>
+        <option value="3" ${ans == 3 ? "selected" : ""}>D</option>
+      </select>
     </div>
-    
-    <label style="font-size:12px;">正解:</label>
-    <select class="q-ans" style="margin-bottom:10px;">
-      <option value="0" ${ans == 0 ? "selected" : ""}>A</option>
-      <option value="1" ${ans == 1 ? "selected" : ""}>B</option>
-      <option value="2" ${ans == 2 ? "selected" : ""}>C</option>
-      <option value="3" ${ans == 3 ? "selected" : ""}>D</option>
-    </select>
-    
-    <label style="font-size:12px;">解説:</label>
-    <input type="text" class="q-exp" placeholder="正解の理由や解説" value="${exp}">
+
+    <label style="font-size:12px;">解説 / 解答例:</label>
+    <input type="text" class="q-exp" placeholder="正解の理由や模範解答を入力" value="${exp}">
   `;
   
   container.appendChild(div);
+}
+
+// 追加：タイプ切り替え時の表示制御用関数
+// scriptタグ内のどこかに追加してください
+function toggleQuestionType(selectElem) {
+  const parent = selectElem.closest('.question-item');
+  const choiceArea = parent.querySelector('.area-choice');
+  if(selectElem.value === 'text') {
+    choiceArea.style.display = 'none';
+  } else {
+    choiceArea.style.display = 'block';
+  }
 }
 
 // 3. 問題フォームを削除する関数
@@ -667,22 +692,37 @@ async function doSaveLesson() {
   let questions = [];
   
   qItems.forEach(item => {
+    const type = item.querySelector('.q-type').value; // タイプを取得
     const text = item.querySelector('.q-text').value;
-    const opt0 = item.querySelector('.q-opt0').value;
-    const opt1 = item.querySelector('.q-opt1').value;
-    const opt2 = item.querySelector('.q-opt2').value;
-    const opt3 = item.querySelector('.q-opt3').value;
-    const ans = parseInt(item.querySelector('.q-ans').value);
     const exp = item.querySelector('.q-exp').value;
     
-    // 空欄の問題は保存しないようにスキップ（任意）
+    // 空欄の問題は保存しない
     if(text) {
-      questions.push({
-        text: text,
-        options: [opt0, opt1, opt2, opt3],
-        answer: ans,
-        explanation: exp
-      });
+      if (type === 'choice') {
+        // 4択の場合
+        const opt0 = item.querySelector('.q-opt0').value;
+        const opt1 = item.querySelector('.q-opt1').value;
+        const opt2 = item.querySelector('.q-opt2').value;
+        const opt3 = item.querySelector('.q-opt3').value;
+        const ans = parseInt(item.querySelector('.q-ans').value);
+        
+        questions.push({
+          type: 'choice',
+          text: text,
+          options: [opt0, opt1, opt2, opt3],
+          answer: ans,
+          explanation: exp
+        });
+      } else {
+        // 記述式の場合（選択肢や正解番号は不要）
+        questions.push({
+          type: 'text',
+          text: text,
+          options: [], 
+          answer: null,
+          explanation: exp
+        });
+      }
     }
   });
 
@@ -699,11 +739,12 @@ async function doSaveLesson() {
     week: week, 
     title: title, 
     date: date, 
-    json: jsonString // 自動生成したJSONを送る
+    json: jsonString
   });
   
   alert("保存しました");
   closeEditor();
+  // 編集画面をリロードして反映
   openCourseEdit(currentCourseId, document.getElementById('edit-course-title').innerText);
   
   btn.disabled = false; 
@@ -880,42 +921,105 @@ function startQuiz(lessonData) {
   const area = document.getElementById('student-quiz-area');
   area.classList.remove('hidden');
   area.scrollIntoView({behavior:'smooth'});
+  
   document.getElementById('quiz-title').innerText = `第${lessonData.week}回: ${lessonData.title}`;
   const content = document.getElementById('quiz-content');
   const result = document.getElementById('quiz-result');
   result.innerText = "";
+  
   let quiz = [];
   try { quiz = JSON.parse(lessonData.quiz); } catch(e) {}
+  
   if(!quiz || quiz.length === 0) {
     content.innerHTML = "課題設定がありません。"; return;
   }
+  
   let html = "";
   quiz.forEach((q, i) => {
-    let opts = "";
-    q.options.forEach((o, oid) => {
-      opts += `<label style="display:block; padding:5px;"><input type="radio" name="q${i}" value="${oid}"> ${o}</label>`;
-    });
-    html += `<div style="margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:10px;">
-      <b>Q${i+1}. ${q.text}</b><div>${opts}</div><div id="fb-${i}" style="font-size:0.9em; margin-top:5px;"></div>
+    let qBody = "";
+    
+    // タイプによって表示を分岐
+    if (!q.type || q.type === 'choice') {
+      // --- 4択クイズ ---
+      let opts = "";
+      q.options.forEach((o, oid) => {
+        opts += `<label style="display:block; padding:5px; cursor:pointer;">
+                   <input type="radio" name="q${i}" value="${oid}"> ${o}
+                 </label>`;
+      });
+      qBody = `<div>${opts}</div>`;
+      
+    } else if (q.type === 'text') {
+      // --- 記述式（文字数カウント付き） ---
+      qBody = `
+        <div style="margin-top:5px;">
+          <textarea id="ans-text-${i}" rows="4" placeholder="回答を入力してください"
+            oninput="document.getElementById('count-${i}').innerText = this.value.length + '文字'"
+            style="width:100%; resize:vertical;"></textarea>
+          <div style="text-align:right; font-size:0.8rem; color:#666;">
+            現在: <span id="count-${i}" style="font-weight:bold;">0文字</span>
+          </div>
+        </div>
+      `;
+    }
+
+    html += `<div style="margin-bottom:20px; border-bottom:1px solid #eee; padding-bottom:15px;">
+      <b>Q${i+1}. ${q.text}</b>
+      ${qBody}
+      <div id="fb-${i}" style="font-size:0.9em; margin-top:10px; padding:10px; background:#f4f4f9; display:none; border-radius:4px;"></div>
     </div>`;
   });
-  html += `<button class="btn-lms" onclick='checkQuiz(${JSON.stringify(quiz)})'>採点する</button>`;
+  
+  html += `<button class="btn-lms" onclick='checkQuiz(${JSON.stringify(quiz)})'>回答を送信・確認する</button>`;
   content.innerHTML = html;
 }
 
 function checkQuiz(quizData) {
   let score = 0;
+  let totalScoreQuestions = 0; // 4択問題の総数
+  
   quizData.forEach((q, i) => {
-    const sel = document.querySelector(`input[name="q${i}"]:checked`);
     const fb = document.getElementById(`fb-`+i);
-    if(sel && parseInt(sel.value) === q.answer) {
-      score++;
-      fb.innerHTML = `<span style="color:green">⭕ 正解！</span> ${q.explanation}`;
-    } else {
-      fb.innerHTML = `<span style="color:red">❌ 不正解...</span> ${q.explanation}`;
+    fb.style.display = 'block'; // 結果表示エリアを表示
+    
+    if (!q.type || q.type === 'choice') {
+      // --- 4択の採点 ---
+      totalScoreQuestions++;
+      const sel = document.querySelector(`input[name="q${i}"]:checked`);
+      
+      if(sel && parseInt(sel.value) === q.answer) {
+        score++;
+        fb.innerHTML = `<span style="color:green; font-weight:bold;">⭕ 正解！</span><br>${q.explanation}`;
+        fb.style.borderLeft = "5px solid green";
+      } else {
+        fb.innerHTML = `<span style="color:red; font-weight:bold;">❌ 不正解...</span><br>${q.explanation}`;
+        fb.style.borderLeft = "5px solid red";
+      }
+      
+    } else if (q.type === 'text') {
+      // --- 記述式の確認 ---
+      const val = document.getElementById(`ans-text-${i}`).value;
+      
+      if(val.trim().length > 0) {
+        fb.innerHTML = `<span style="color:#005f73; font-weight:bold;">📝 回答完了</span><br>
+                        <hr style="margin:5px 0; border:0; border-top:1px dashed #ccc;">
+                        <strong>【解答例・解説】</strong><br>${q.explanation}`;
+        fb.style.borderLeft = "5px solid #005f73";
+      } else {
+        fb.innerHTML = `<span style="color:orange; font-weight:bold;">⚠️ 未回答</span><br>
+                        <strong>【解答例・解説】</strong><br>${q.explanation}`;
+        fb.style.borderLeft = "5px solid orange";
+      }
     }
   });
-  document.getElementById('quiz-result').innerText = `得点: ${score} / ${quizData.length} 点`;
+
+  // 結果表示（4択問題がある場合のみ点数を表示）
+  let resultText = "お疲れ様でした！解説を確認してください。";
+  if (totalScoreQuestions > 0) {
+    resultText = `【4択問題】 ${score} / ${totalScoreQuestions} 点<br><span style="font-size:0.9rem;">※記述式は自己採点してください</span>`;
+  }
+  
+  document.getElementById('quiz-result').innerHTML = resultText;
 }
 
 // ==========================================
