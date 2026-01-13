@@ -102,6 +102,9 @@ video {
     object-fit: contain;    /* 動画が見切れないように枠内に収める */
 }
 </style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
 </head>
 <body>
 
@@ -130,6 +133,7 @@ video {
 
   <div id="form-student-reg" class="hidden">
     <h3>👨‍🎓 学生アカウント作成</h3>
+<input type="text" id="stu-reg-id" placeholder="学籍番号" style="margin-bottom:5px;">
     <input type="text" id="stu-reg-name" placeholder="お名前">
     <input type="email" id="stu-reg-email" placeholder="メールアドレス">
     <input type="password" id="stu-reg-pass" placeholder="パスワード">
@@ -384,11 +388,12 @@ video {
   </div></div>
 
 <script>
+
 // ==========================================
 // 🔗 GAS連携設定 (GitHub用)
 // ==========================================
 // ↓ここにGASのデプロイURLを貼り付けてください
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyg9Ja5I-RrLMp6rxRYsVj-EGj5AtihbaQE285wE_SyUOn5m6Ma_5vqD1L1ZNs5DuvzXQ/exec";
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyc4V3GgsOUoh9Qa5t1PY_212c_yMB1DPLRTJgnpOp4ZKIvFgiukedhJV4j2zhhEj57mw/exec";
 
 // GASと通信するための関数 (fetchを使用)
 async function callGAS(action, params = {}) {
@@ -437,6 +442,8 @@ if (appName === 'studio') {
 // ==========================================
 let currentTeacherEmail = "";
 let currentCourseId = "";
+let currentStudentName = "";
+let currentStudentId = "";
 
 function switchLoginTab(type) {
   // 1. タブの見た目の切り替え
@@ -778,15 +785,24 @@ function backToStudentDash() {
 
 // 1. 学生新規登録
 async function doStudentRegister() {
+  // ▼▼▼ 修正: 学籍番号(sid)を取得 ▼▼▼
+  const sid = document.getElementById('stu-reg-id').value;
   const n = document.getElementById('stu-reg-name').value;
   const e = document.getElementById('stu-reg-email').value;
   const p = document.getElementById('stu-reg-pass').value;
-  if(!n || !e || !p) return alert("全て入力してください");
+  
+  // バリデーションに sid を追加
+  if(!sid || !n || !e || !p) return alert("全て入力してください");
   
   const btn = event.target; btn.disabled = true; btn.innerText = "通信中...";
 
-  // GAS側の 'studentRegister' を呼ぶ
-  const res = await callGAS('studentRegister', {name: n, email: e, password: p});
+  // GASへ studentId を送信するように修正
+  const res = await callGAS('studentRegister', {
+      studentId: sid, // 追加
+      name: n, 
+      email: e, 
+      password: p
+  });
   
   alert(res.message);
   if(res.success) hideStuRegForm();
@@ -801,16 +817,20 @@ async function doStudentLogin() {
   
   const btn = event.target; btn.disabled = true; btn.innerText = "確認中...";
   
-  // GAS側の 'studentLogin' を呼ぶ (引数をIDからEmailに変更)
   const res = await callGAS('studentLogin', {email: e, password: p});
   
   if(res.success) {
     currentStudentEmail = res.email;
+    
+    // ▼▼▼ 追加: 名前と学籍番号をグローバル変数に保存 ▼▼▼
+    currentStudentName = res.name; 
+    currentStudentId = res.studentId || "未登録"; // GASから返却させる必要あり
+    // ▲▲▲ 追加ここまで ▲▲▲
+
     document.getElementById('student-name-display').innerText = res.name + " さん";
     document.getElementById('view-login').classList.add('hidden');
     document.getElementById('view-student-dash').classList.remove('hidden');
     
-    // 履修講義一覧を読み込む
     loadMyCourses();
   } else {
     alert(res.message);
@@ -923,14 +943,21 @@ function startQuiz(lessonData) {
     
     // タイプによって表示を分岐
     if (!q.type || q.type === 'choice') {
+      
       // --- 4択クイズ ---
       let opts = "";
       q.options.forEach((o, oid) => {
-        opts += `<label style="display:block; padding:5px; cursor:pointer;">
-                   <input type="radio" name="q${i}" value="${oid}"> ${o}
-                 </label>`;
+        // ▼▼▼ 修正箇所: inputタグに width:auto; を追加しました ▼▼▼
+        opts += `<label style="display:flex; flex-direction:row; align-items:center; width:100%; padding:12px 5px; cursor:pointer; border-bottom:1px dashed #ccc; box-sizing:border-box;">
+                    
+                    <input type="radio" name="q${i}" value="${oid}" style="width:auto; margin-right:15px; transform:scale(1.2); flex-shrink:0;">
+
+                    <span style="flex:1; text-align:left; font-size:1rem; line-height:1.5; color:#333; word-break:break-word;">${o}</span>
+                  
+                  </label>`;
       });
-      qBody = `<div>${opts}</div>`;
+      qBody = `<div style="margin-top:5px;">${opts}</div>`;
+
       
     } else if (q.type === 'text') {
       // --- 記述式（文字数カウント付き） ---
@@ -961,12 +988,27 @@ function checkQuiz(quizData) {
   let score = 0;
   let totalScoreQuestions = 0; // 4択問題の総数
   
+  // PDF出力時に邪魔なボタンを消すためのクラスを付与する準備
+  const submitBtn = event.target; // 「回答を送信・確認する」ボタン
+  if(submitBtn) submitBtn.style.display = 'none'; // 送信ボタンは隠す
+
   quizData.forEach((q, i) => {
     const fb = document.getElementById(`fb-`+i);
-    fb.style.display = 'block'; // 結果表示エリアを表示
+    fb.style.display = 'block'; 
     
+    // --- フォームを無効化（PDFで見やすくするため） ---
+    const radios = document.getElementsByName(`q${i}`);
+    radios.forEach(r => r.disabled = true);
+    const textarea = document.getElementById(`ans-text-${i}`);
+    if(textarea) {
+        textarea.disabled = true;
+        textarea.style.background = "#f0f0f0"; // 背景色を薄いグレーに
+        textarea.style.border = "none";
+    }
+
+    // --- 採点ロジック ---
     if (!q.type || q.type === 'choice') {
-      // --- 4択の採点 ---
+      // 4択
       totalScoreQuestions++;
       const sel = document.querySelector(`input[name="q${i}"]:checked`);
       
@@ -980,8 +1022,8 @@ function checkQuiz(quizData) {
       }
       
     } else if (q.type === 'text') {
-      // --- 記述式の確認 ---
-      const val = document.getElementById(`ans-text-${i}`).value;
+      // 記述式
+      const val = textarea ? textarea.value : "";
       
       if(val.trim().length > 0) {
         fb.innerHTML = `<span style="color:#005f73; font-weight:bold;">📝 回答完了</span><br>
@@ -996,13 +1038,80 @@ function checkQuiz(quizData) {
     }
   });
 
-  // 結果表示（4択問題がある場合のみ点数を表示）
-  let resultText = "お疲れ様でした！解説を確認してください。";
+  // 結果表示の作成
+  let resultHtml = "";
+const today = new Date().toLocaleDateString();
+  resultHtml += `
+    <div style="border: 2px solid #333; padding: 15px; margin-bottom: 20px; text-align: left; background: #fff;">
+      <h4 style="margin:0 0 10px 0; border-bottom:1px solid #ccc; padding-bottom:5px;">課題レポート</h4>
+      <p style="margin:5px 0;"><b>学籍番号：</b> ${currentStudentId}</p>
+      <p style="margin:5px 0;"><b>氏名：</b> ${currentStudentName}</p>
+      <p style="margin:5px 0;"><b>実施日：</b> ${today}</p>
+    </div>
+  `;
+
   if (totalScoreQuestions > 0) {
-    resultText = `【4択問題】 ${score} / ${totalScoreQuestions} 点<br><span style="font-size:0.9rem;">※記述式は自己採点してください</span>`;
+    resultHtml += `<div style="font-size:1.2em; font-weight:bold; margin-bottom:10px;">【4択成績】 ${score} / ${totalScoreQuestions} 点</div>`;
   }
+  resultHtml += `<div style="font-size:0.9em; color:#666;">※記述式は自己採点してください</div>`;
   
-  document.getElementById('quiz-result').innerHTML = resultText;
+  // PDFボタンの追加
+  // data-html2canvas-ignore 属性をつけると、PDF変換時に無視（非表示）されます
+  resultHtml += `
+    <div style="margin-top:20px; text-align:center;">
+      <button class="btn-lms" onclick="downloadQuizPDF()" data-html2canvas-ignore="true" style="background:#ee9b00;">
+        📄 結果をPDFで保存する
+      </button>
+      <button class="btn-lms btn-secondary" onclick="location.reload()" data-html2canvas-ignore="true" style="margin-top:10px;">
+        終了して戻る
+      </button>
+    </div>
+  `;
+  
+  document.getElementById('quiz-result').innerHTML = resultHtml;
+  
+  // 結果エリアまでスクロール
+  document.getElementById('quiz-result').scrollIntoView({behavior:'smooth'});
+}
+
+// PDFダウンロード実行関数
+function downloadQuizPDF() {
+  // 保存する対象のエリア
+  const element = document.getElementById('student-quiz-area');
+  
+  // ファイル名
+  const courseTitle = document.getElementById('student-course-title').innerText;
+  const quizTitle = document.getElementById('quiz-title').innerText;
+  const fileName = `${courseTitle}_${quizTitle}_結果.pdf`;
+
+  // オプション設定
+  const opt = {
+    margin:       10,
+    filename:     fileName,
+    image:        { type: 'jpeg', quality: 0.98 },
+    html2canvas:  { 
+        scale: 2, 
+        useCORS: true, 
+        scrollY: 0  // ★重要：これがないとスクロール時に真っ白になります
+    },
+    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  };
+
+  // ボタンの表示変更
+  const btn = event.target;
+  const originalText = btn.innerText;
+  btn.innerText = "PDF作成中...";
+  btn.disabled = true;
+
+  // PDF生成実行
+  html2pdf().set(opt).from(element).save().then(() => {
+    btn.innerText = originalText;
+    btn.disabled = false;
+  }).catch((err) => {
+    alert("PDF作成に失敗しました: " + err);
+    btn.innerText = originalText;
+    btn.disabled = false;
+  });
 }
 
 // ==========================================
