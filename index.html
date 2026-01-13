@@ -101,6 +101,13 @@ video {
     height: 100%;
     object-fit: contain;    /* 動画が見切れないように枠内に収める */
 }
+
+/* 管理者用テーブルスタイル */
+  .admin-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
+  .admin-table th, .admin-table td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+  .admin-table th { background: #eee; font-weight: bold; }
+  .admin-section { margin-bottom: 30px; }
+  .admin-section h3 { border-left: 5px solid #333; padding-left: 10px; background: #f0f0f0; padding: 5px 10px; }
 </style>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -120,6 +127,7 @@ video {
   <div class="tabs">
     <div class="tab active" onclick="switchLoginTab('student')">👨‍🎓 学生</div>
     <div class="tab" onclick="switchLoginTab('teacher')">👨‍🏫 教員</div>
+<div class="tab" onclick="switchLoginTab('admin')">👨‍💻 管理者</div>
   </div>
 
   <div id="form-student-login">
@@ -158,7 +166,14 @@ video {
     <button class="btn-lms" onclick="doTeacherRegister()">登録する</button>
     <button class="btn-lms btn-secondary" style="margin-top:5px;" onclick="hideRegForm()">キャンセル</button>
   </div>
+
+<div id="form-admin-login" class="hidden">
+    <h3>管理者ログイン</h3>
+    <input type="password" id="admin-pass" placeholder="管理者パスワード">
+    <button class="btn-lms" onclick="doAdminLogin()" style="background:#333;">管理者としてログイン</button>
+  </div>
 </div>
+
 
     <div id="view-teacher-dash" class="hidden">
       <div class="card">
@@ -296,6 +311,69 @@ video {
         <div id="quiz-content"></div>
         <div id="quiz-result" style="margin-top:10px; font-weight:bold; font-size:1.2em;"></div>
       </div>
+</div>
+
+<div id="view-admin-dash" class="hidden">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h2 style="margin:0;">🛠 管理者ダッシュボード</h2>
+          <button class="btn-lms btn-secondary" style="width:auto;" onclick="location.reload()">ログアウト</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="admin-section">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+            <h3>👨‍🎓 学生一覧 (<span id="count-students">0</span>名)</h3>
+            <input type="text" id="search-student" placeholder="🔍 学籍番号 or 氏名で検索" 
+                   style="width:250px; margin:0;" oninput="filterAdminStudents()">
+          </div>
+          
+          <div style="overflow-x:auto; max-height:400px; overflow-y:auto; margin-top:10px;">
+            <table class="admin-table">
+              <thead style="position:sticky; top:0; z-index:1;">
+                <tr>
+                  <th>学籍番号</th>
+                  <th>氏名</th>
+                  <th>Email</th>
+                  <th>履修中の講義</th> </tr>
+              </thead>
+              <tbody id="list-students"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="admin-section">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+            <h3>👨‍🏫 教員一覧 (<span id="count-teachers">0</span>名)</h3>
+            <input type="text" id="search-teacher" placeholder="🔍 氏名で検索" 
+                   style="width:250px; margin:0;" oninput="filterAdminTeachers()">
+          </div>
+
+          <div style="overflow-x:auto; margin-top:10px;">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>名前</th>
+                  <th>Email</th>
+                  <th>担当している講義</th> </tr>
+              </thead>
+              <tbody id="list-teachers"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="admin-section">
+          <h3>📚 講義マスタ (<span id="count-courses">0</span>件)</h3>
+          <div style="overflow-x:auto;">
+            <table class="admin-table">
+              <thead><tr><th>講義ID</th><th>講義名</th><th>担当教員Email</th></tr></thead>
+              <tbody id="list-courses"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
     </div>
   </div></div><div id="app-studio" class="app-container">
   <div class="studio-wrapper">
@@ -393,7 +471,7 @@ video {
 // 🔗 GAS連携設定 (GitHub用)
 // ==========================================
 // ↓ここにGASのデプロイURLを貼り付けてください
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyc4V3GgsOUoh9Qa5t1PY_212c_yMB1DPLRTJgnpOp4ZKIvFgiukedhJV4j2zhhEj57mw/exec";
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyR6VShtoGhNkZmfRKBCB9ImW4X_Xo1vt3EFBrKPICu5LxyuCLBqIjVdPsDXRzMX5t_sw/exec";
 
 // GASと通信するための関数 (fetchを使用)
 async function callGAS(action, params = {}) {
@@ -446,21 +524,23 @@ let currentStudentName = "";
 let currentStudentId = "";
 
 function switchLoginTab(type) {
-  // 1. タブの見た目の切り替え
   document.querySelectorAll('.tab').forEach(e => e.classList.remove('active'));
   event.target.classList.add('active');
 
-  // 2. 一旦すべてのフォームを隠す（リセット）
   document.getElementById('form-student-login').classList.add('hidden');
-  document.getElementById('form-student-reg').classList.add('hidden'); // 学生登録フォームも隠す
+  document.getElementById('form-student-reg').classList.add('hidden');
   document.getElementById('form-teacher-login').classList.add('hidden');
-  document.getElementById('form-teacher-reg').classList.add('hidden'); // 教員登録フォームも隠す
+  document.getElementById('form-teacher-reg').classList.add('hidden');
+  // ▼追加: 管理者フォームを隠す
+  document.getElementById('form-admin-login').classList.add('hidden');
 
-  // 3. 選ばれたタブの「ログインフォーム」だけを表示する
   if(type === 'student') {
     document.getElementById('form-student-login').classList.remove('hidden');
-  } else {
+  } else if (type === 'teacher') {
     document.getElementById('form-teacher-login').classList.remove('hidden');
+  } else if (type === 'admin') {
+    // ▼追加: 管理者フォームを表示
+    document.getElementById('form-admin-login').classList.remove('hidden');
   }
 }
 
@@ -1438,6 +1518,142 @@ function loadToEditorFromLib(url) {
     });
 }
 
+// ==========================================
+// 🛠 管理者用 JSロジック (検索・紐付け対応版)
+// ==========================================
+
+// データを保持しておくグローバル変数
+let adminAllStudents = [];
+let adminAllTeachers = [];
+let adminAllCourses = [];
+let adminAllEnrollments = [];
+
+// コースIDからコース名を引くための辞書
+let courseNameMap = {}; 
+
+async function doAdminLogin() {
+  const p = document.getElementById('admin-pass').value;
+  if(!p) return alert("パスワードを入力してください");
+
+  const btn = event.target; btn.disabled = true; btn.innerText = "認証中...";
+
+  // GASへ問い合わせ
+  const res = await callGAS('adminLogin', {password: p});
+
+  if(res.success) {
+    document.getElementById('view-login').classList.add('hidden');
+    document.getElementById('view-admin-dash').classList.remove('hidden');
+    
+    // データをグローバル変数に保存
+    adminAllStudents = res.students;
+    adminAllTeachers = res.teachers;
+    adminAllCourses = res.courses;
+    // GAS側で enrollments を返していないと undefined になるため空配列で防衛
+    adminAllEnrollments = res.enrollments || []; 
+
+    // マッピング処理（コースID → コース名 の辞書を作る）
+    courseNameMap = {};
+    adminAllCourses.forEach(c => {
+      courseNameMap[c.id] = c.name;
+    });
+
+    // 初期表示
+    filterAdminStudents(); // 全件表示
+    filterAdminTeachers(); // 全件表示
+    renderAdminCourses();  // 講義マスタ表示
+
+  } else {
+    alert(res.message);
+  }
+  btn.disabled = false; btn.innerText = "管理者としてログイン";
+}
+
+// --- 学生の検索＆表示 ---
+function filterAdminStudents() {
+  const input = document.getElementById('search-student');
+  if(!input) return; // エラー防止
+  const keyword = input.value.toLowerCase();
+  
+  // 1. 検索フィルタリング
+  const filtered = adminAllStudents.filter(s => {
+    const id = String(s.id).toLowerCase();
+    const name = s.name.toLowerCase();
+    return id.includes(keyword) || name.includes(keyword);
+  });
+
+  // 2. 件数更新
+  document.getElementById('count-students').innerText = filtered.length;
+
+  // 3. テーブル描画
+  const tbody = document.getElementById('list-students');
+  tbody.innerHTML = "";
+  
+  filtered.forEach(s => {
+    // この学生が履修している講義を探す
+    // (EnrollmentのstudentEmail と Studentのemail が一致するもの)
+    const myEnrollments = adminAllEnrollments.filter(e => e.studentEmail === s.email);
+    
+    // コースIDを名前に変換してリスト化
+    const courseNames = myEnrollments.map(e => {
+      return courseNameMap[e.courseId] ? `・${courseNameMap[e.courseId]}` : `・不明(${e.courseId})`;
+    }).join('<br>');
+
+    tbody.innerHTML += `<tr>
+      <td>${s.id}</td>
+      <td style="font-weight:bold;">${s.name}</td>
+      <td>${s.email}</td>
+      <td style="font-size:0.85rem; color:#555;">${courseNames || '<span style="color:#ccc;">なし</span>'}</td>
+    </tr>`;
+  });
+}
+
+// --- 教員の検索＆表示 ---
+function filterAdminTeachers() {
+  const input = document.getElementById('search-teacher');
+  if(!input) return;
+  const keyword = input.value.toLowerCase();
+
+  // 1. 検索フィルタリング
+  const filtered = adminAllTeachers.filter(t => {
+    return t.name.toLowerCase().includes(keyword);
+  });
+
+  // 2. 件数更新
+  document.getElementById('count-teachers').innerText = filtered.length;
+
+  // 3. テーブル描画
+  const tbody = document.getElementById('list-teachers');
+  tbody.innerHTML = "";
+
+  filtered.forEach(t => {
+    // この教員が担当している講義を探す
+    // (Courseのteacher(Email) と Teacherのemail が一致するもの)
+    const myCourses = adminAllCourses.filter(c => c.teacher === t.email);
+    
+    const courseNames = myCourses.map(c => `・${c.name}`).join('<br>');
+
+    tbody.innerHTML += `<tr>
+      <td style="font-weight:bold;">${t.name}</td>
+      <td>${t.email}</td>
+      <td style="font-size:0.85rem; color:#555;">${courseNames || '<span style="color:#ccc;">なし</span>'}</td>
+    </tr>`;
+  });
+}
+
+// --- 講義マスタの表示（検索なし、シンプル表示） ---
+function renderAdminCourses() {
+  const tbody = document.getElementById('list-courses');
+  tbody.innerHTML = "";
+  document.getElementById('count-courses').innerText = adminAllCourses.length;
+  
+  adminAllCourses.forEach(c => {
+    tbody.innerHTML += `<tr>
+      <td>${c.id}</td>
+      <td>${c.name}</td>
+      <td>${c.teacher}</td>
+    </tr>`;
+  });
+}
 </script>
 </body>
 </html>
